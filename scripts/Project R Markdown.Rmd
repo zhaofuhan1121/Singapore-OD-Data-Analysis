@@ -1,6 +1,6 @@
 ---
 title: "Project"
-author: '''Aya'''
+author: "Aya"
 date: "`r Sys.Date()`"
 output: html_document
 ---
@@ -9,12 +9,74 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
-library(osdatahub)
+```{r libraries, message=FALSE, warning=FALSE}
+library(tidyverse) # also attaches ggplot2, dplyr, readr, etc.
+library(scales)
+library(patchwork)
+library(sf)
+library(RColorBrewer)
+library(kableExtra)
+library(here)
+library(arrow) # fast CSV reading and lazy queries on large Parquet data
+library(tmap)
+
+source(here("R", "od_io.R"))
+```
+
+# import csv file
+
+```{r build-od-parquet}
+# The raw OD CSVs are far larger than memory (bus: ~18 GB in total), so we do
+# not load them all at once. Instead, every monthly CSV in data/raw/OD/ is
+# converted once into a Parquet dataset in data/processed/od_parquet/
+# (about 8x smaller on disk). Months already converted are skipped, so this
+# chunk is slow only the first time and after new months are downloaded.
+build_od_parquet()
+
+od <- open_od() # lazy: nothing is read into memory yet
+od
+```
+
+```{r load-od-2020}
+# Filter first, then collect() only the rows you need. MODE is "train" or
+# "bus"; YYYYMM is an integer such as 202001. Bus stop codes stay as text, so
+# leading zeros (e.g. "01012") are kept for joining with spatial data.
+dfB20 <- c(202003, 202006, 202009, 202012)
+
+od_bus_2020 <- od |>
+  filter(MODE == "bus", YYYYMM %in% dfB20) |>
+  collect()
 ```
 
 ```{r}
-list_os_opendata()
-list_os_datapackages()
+head(od_bus_2020)
 ```
 
+
+# define core stop area
+
+```{r}
+read_sf(here('data', 'raw', 'spatial', 'MasterPlan2019SubzoneBoundaryNoSeaGEOJSON.geojson')) -> m_subzone
+
+read_sf(here('data', 'raw', 'spatial', 'LTABusStop.geojson')) -> m_busstop
+```
+
+```{r}
+area_center <- c("PHILLIP", "RAFFLES PLACE", "BAYFRONT SUBZONE", "NICOLL", "ANSON", "TANJONG PAGAR", "MAXWELL", "CECIL", "CENTRAL SUBZONE", "BUGIS", "MARINA CENTRE", "CITY HALL")
+
+area_jurong <- c("JURONG GATEWAY", "INTERNATIONAL BUSINESS PARK", "LAKESIDE (LEISURE)", "LAKESIDE (BUSINESS)" )
+
+area_woodlands <- c("NORTH COAST", "WOODLANDS REGIONAL CENTRE")
+
+area_tampines <- c("TAMPINES NORTH", "TAMPINES WEST", "TAMPINES EAST")
+```
+
+```{r}
+m_subzone %>%
+  filter(SUBZONE_N %in% area_center)
+```
+
+
+
+
+# define share of becoming a subzone
